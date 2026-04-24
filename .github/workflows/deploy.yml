@@ -5,9 +5,9 @@ on:
     branches: [ main ]
 
 env:
-  AWS_REGION: ap-south-1
-  ECR_REPOSITORY_CLIENT: mern-client
-  ECR_REPOSITORY_SERVER: mern-server
+#  AWS_REGION: ap-south-1
+  ECR_REPOSITORY_CLIENT: frontend
+  ECR_REPOSITORY_SERVER: backend
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
 jobs:
@@ -23,21 +23,21 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        aws-region: ${{ secrets.AWS_REGION }}
 
     - name: Login to Amazon ECR
       run: |
-        aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+        aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
         docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
 
     - name: Build and push client image
       run: |
-        docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CLIENT }}:latest ./client
+        docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CLIENT }}:latest ./frontend
         docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CLIENT }}:latest
 
     - name: Build and push server image
       run: |
-        docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_SERVER }}:latest ./server
+        docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_SERVER }}:latest ./backend
         docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_SERVER }}:latest
 
     - name: Deploy to EC2 via SSH
@@ -48,7 +48,7 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
           # Login to ECR on EC2 (requires IAM role or access keys)
-          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
           docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
 
           # Pull latest images
