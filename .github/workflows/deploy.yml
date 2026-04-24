@@ -1,0 +1,64 @@
+name: Deploy MERN App to ECR + EC2
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY_CLIENT: mern-client
+  ECR_REPOSITORY_SERVER: mern-server
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: "ap-south-1"
+
+    - name: Login to Amazon ECR
+      run: |
+        aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+        docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+
+    - name: Build and push client image
+      run: |
+        docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CLIENT }}:latest ./client
+        docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CLIENT }}:latest
+
+    - name: Build and push server image
+      run: |
+        docker build -t ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_SERVER }}:latest ./server
+        docker push ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_SERVER }}:latest
+
+    - name: Deploy to EC2 via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ubuntu
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          # Login to ECR on EC2 (requires IAM role or access keys)
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | \
+          docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+
+          # Pull latest images
+          docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CLIENT }}:latest
+          docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_SERVER }}:latest
+
+          # Stop and remove old containers
+          docker stop client || true && docker rm client || true
+          docker stop server || true && docker rm server || true
+
+          # Run new containers
+          docker run -d -p 80:80 --name client ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_CLIENT }}:latest
+          docker run -d -p 5000:5000 --name server ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY_SERVER }}:latest
